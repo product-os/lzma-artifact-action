@@ -1,0 +1,100 @@
+name: LZMA Upload Artifact
+description: Compress one or more files with LZMA (optionally AES-256 encrypted) into a single archive and upload it as a GitHub Actions artifact
+author: balena
+
+branding:
+  icon: upload-cloud
+  color: blue
+
+inputs:
+  source:
+    description: A file, directory or wildcard pattern describing what to include in the artifact
+    required: true
+  password:
+    description: >
+      Optional text password. When set, an AES-256 key is derived from it and used to encrypt
+      the archive (including its headers/filenames). Leave empty for compression only.
+    required: false
+    default: ""
+  compression-level:
+    description: >
+      LZMA compression level for 7-Zip, from 0 (store, no compression) to 9 (best).
+      Levels above 4 raise runtime sharply for little size gain; use 0-1 for
+      already-compressed or incompressible data.
+    required: false
+    default: "3"
+  # --- actions/upload-artifact@v4 pass-throughs ---
+  name:
+    description: Name of the artifact in GitHub after upload
+    required: false
+    default: artifact
+  retention-days:
+    description: >
+      Days until the artifact expires. 0 uses the repository default. Actual values range
+      from 1 to 90 (public) or 400 (private).
+    required: false
+    default: "0"
+  overwrite:
+    description: >
+      If true, an existing artifact with the same name is deleted before upload.
+      If false, upload fails when a same-named artifact already exists.
+    required: false
+    default: "true"
+
+outputs:
+  artifact-id:
+    description: ID of the uploaded artifact, usable with the GitHub REST API
+    value: ${{ steps.upload.outputs.artifact-id }}
+  artifact-url:
+    description: URL to download the uploaded artifact
+    value: ${{ steps.upload.outputs.artifact-url }}
+
+runs:
+  using: composite
+
+  steps:
+    - name: Check source files
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+      run: |
+        set -euo pipefail
+        echo "INFO: checking source files"
+        # Unquoted on purpose so globs/multiple paths expand.
+        ls -l $SOURCE
+
+    - name: Create local artifact
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        PASSWORD: ${{ inputs.password }}
+        LEVEL: ${{ inputs.compression-level }}
+      run: |
+        set -euo pipefail
+        echo "INFO: compressing source files with LZMA"
+        # 7-Zip has no long-option form; short switches:
+        #   a        add to archive          -si  read tar stream from stdin
+        #   -t7z     7z container (LZMA2)     -mx  LZMA level (0-9)
+        #   -mhe=on  encrypt headers too      -p   password -> AES-256
+        # Only the encryption switches vary, so build them into the arg list once.
+        args=(a -si -t7z -mx="$LEVEL")
+        if [ -n "$PASSWORD" ]; then
+          echo "INFO: encrypting archive with AES-256"
+          args+=(-mhe=on -p"$PASSWORD")
+        fi
+        # SOURCE unquoted on purpose so globs/multiple paths expand.
+        tar --create --file=- $SOURCE | 7z "${args[@]}" artifact.tar.7z
+        echo "INFO: local artifact created"
+        ls -l artifact.tar.7z
+
+    - name: Upload local artifact
+      id: upload
+      uses: actions/upload-artifact@v4
+      with:
+        path: artifact.tar.7z
+        name: ${{ inputs.name }}
+        if-no-files-found: error
+        retention-days: ${{ inputs.retention-days }}
+        # The blob is already LZMA-compressed; skip upload-artifact's own zip.
+        compression-level: 0
+        overwrite: ${{ inputs.overwrite }}

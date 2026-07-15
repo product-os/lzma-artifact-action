@@ -1,0 +1,117 @@
+name: LZMA Download Artifact
+description: Download a GitHub Actions artifact created with the LZMA upload action, then decompress it (and decrypt it if it was password protected)
+author: balena
+
+branding:
+  icon: download-cloud
+  color: blue
+
+inputs:
+  destination:
+    description: Directory where the decompressed artifact contents are extracted
+    required: false
+    default: ${{ github.workspace }}
+  password:
+    description: >
+      Original text password used when the artifact was uploaded. Required only if the
+      artifact was encrypted; leave empty otherwise.
+    required: false
+    default: ""
+  # --- actions/download-artifact@v4 pass-throughs ---
+  name:
+    description: Name of the artifact to download. If empty, all artifacts are downloaded.
+    required: false
+    default: ""
+  pattern:
+    description: A glob pattern matching the names of artifacts to download. Ignored if name is set.
+    required: false
+    default: ""
+  merge-multiple:
+    description: >
+      Controls the layout when multiple artifacts are extracted, mirroring actions/download-artifact:
+      false (default) extracts each artifact's contents into its own <destination>/<artifact-name>/
+      subdirectory; true extracts them all directly into destination. A single artifact is always
+      extracted flat into destination regardless of this value.
+      (Applied at extraction time, not passed to download-artifact: every archive shares the name
+      artifact.tar.7z, so merging the compressed blobs before extraction would collide.)
+    required: false
+    default: "false"
+  github-token:
+    description: Token used to authenticate with the GitHub REST API when downloading from another run or repository.
+    required: false
+    default: ${{ github.token }}
+  repository:
+    description: Repository owner and name (owner/name) to download the artifact from.
+    required: false
+    default: ${{ github.repository }}
+  run-id:
+    description: Workflow run ID the artifact belongs to. Defaults to the current run.
+    required: false
+    default: ${{ github.run_id }}
+
+runs:
+  using: composite
+
+  steps:
+    - name: Create temporary download directory
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "INFO: creating temporary download directory"
+        download_dir="$(mktemp -d)"
+        echo "LZMA_DOWNLOAD_DIR=${download_dir}" >> "$GITHUB_ENV"
+
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        path: ${{ env.LZMA_DOWNLOAD_DIR }}
+        name: ${{ inputs.name }}
+        pattern: ${{ inputs.pattern }}
+        github-token: ${{ inputs.github-token }}
+        repository: ${{ inputs.repository }}
+        run-id: ${{ inputs.run-id }}
+
+    - name: Decompress artifact
+      shell: bash
+      env:
+        PASSWORD: ${{ inputs.password }}
+        DESTINATION: ${{ inputs.destination }}
+        MERGE_MULTIPLE: ${{ inputs.merge-multiple }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$DESTINATION"
+
+        # download-artifact lays each artifact out as <dir>/<artifact-name>/artifact.tar.7z
+        # (a single named download lands flat at <dir>/artifact.tar.7z). Find every blob.
+        mapfile -d '' -t blobs < <(find "$LZMA_DOWNLOAD_DIR" -name artifact.tar.7z -print0)
+        if [ "${#blobs[@]}" -eq 0 ]; then
+          echo "ERROR: no artifact.tar.7z found in the downloaded artifact(s)" >&2
+          exit 1
+        fi
+
+        # 7-Zip switches: x extract, -so write to stdout, -p password.
+        # Only the password switch varies, so build the arg list once.
+        args=(x -so)
+        [ -n "$PASSWORD" ] && args+=(-p"$PASSWORD")
+
+        # Layout mirrors download-artifact: flat when there is one artifact or merge is on,
+        # otherwise one <destination>/<artifact-name>/ subdirectory per artifact. The choice
+        # is fixed for the whole run, so decide it once rather than per blob.
+        flat=false
+        if [ "$MERGE_MULTIPLE" = "true" ] || [ "${#blobs[@]}" -eq 1 ]; then
+          flat=true
+        fi
+
+        for blob in "${blobs[@]}"; do
+          if [ "$flat" = "true" ]; then
+            target="$DESTINATION"  # already created above
+          else
+            # <artifact-name> is the directory holding the blob under the download root.
+            target="$DESTINATION/$(basename "$(dirname "$blob")")"
+            mkdir -p "$target"
+          fi
+          echo "INFO: extracting ${blob} -> ${target}"
+          7z "${args[@]}" "$blob" | tar --extract --file=- --directory="$target"
+        done
+        echo "INFO: extracted contents under ${DESTINATION}"
+        ls -l "$DESTINATION"

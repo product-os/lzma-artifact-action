@@ -1,0 +1,118 @@
+# Flowzone self-test: round-trips real data through the upload and download sub-actions.
+# Flowzone discovers this action by directory existence (.github/actions/test) and runs it
+# once per custom_test_matrix cell, exporting `matrix_value` to the environment.
+# Scenarios (matrix value): encrypted/plain exercise encryption on/off on a single artifact;
+# merge/split exercise the multi-artifact extraction layouts (flat vs per-name subdirs).
+name: Self-test LZMA artifact actions
+description: Upload then download fixtures and assert contents and layout survive the round-trip
+
+# Flowzone always passes these three inputs, so they must be declared even when unused.
+inputs:
+  json:
+    description: JSON-stringified object of all workflow inputs
+    required: true
+  secrets:
+    description: JSON-stringified object of all workflow secrets
+    required: true
+  variables:
+    description: JSON-stringified object of all workflow variables
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up scenario
+      shell: bash
+      env:
+        JOB_INDEX: ${{ strategy.job-index }}
+      run: |
+        set -euo pipefail
+        # strategy.job-index is unique per matrix cell (a flat 0..N-1 index over the whole
+        # value x os product), so it keeps artifact names from colliding between cells in the
+        # same run. Fail loudly if it is empty, which would mean the strategy context is not
+        # populated inside this composite action and cells would silently collide.
+        if [ -z "$JOB_INDEX" ]; then
+          echo "ERROR: strategy.job-index is empty; matrix cells would collide on artifact names" >&2
+          exit 1
+        fi
+        echo "PREFIX=lzma-selftest-${matrix_value}-${JOB_INDEX}" >> "$GITHUB_ENV"
+        # A literal password for the encrypted scenario only; it guards nothing real here.
+        if [ "$matrix_value" = "encrypted" ]; then
+          echo "PW=correct horse battery staple" >> "$GITHUB_ENV"
+        else
+          echo "PW=" >> "$GITHUB_ENV"
+        fi
+        mkdir -p fixture
+        echo single-content > fixture/single.txt
+        echo content-a > fixture/a.txt
+        echo content-b > fixture/b.txt
+
+    # --- single-artifact scenarios: encrypted, plain ---
+    - name: Upload (single)
+      if: ${{ env.matrix_value == 'encrypted' || env.matrix_value == 'plain' }}
+      uses: ./upload
+      with:
+        source: fixture/single.txt
+        password: ${{ env.PW }}
+        name: ${{ env.PREFIX }}
+        overwrite: "true"
+
+    - name: Download (single)
+      if: ${{ env.matrix_value == 'encrypted' || env.matrix_value == 'plain' }}
+      uses: ./download
+      with:
+        name: ${{ env.PREFIX }}
+        password: ${{ env.PW }}
+        destination: extracted
+
+    - name: Assert (single)
+      if: ${{ env.matrix_value == 'encrypted' || env.matrix_value == 'plain' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -f extracted/fixture/single.txt
+        grep -qx single-content extracted/fixture/single.txt
+        echo "INFO: single-artifact ${matrix_value} round-trip OK"
+
+    # --- multi-artifact scenarios: merge (flat), split (per-name subdirs) ---
+    - name: Upload A (multi)
+      if: ${{ env.matrix_value == 'merge' || env.matrix_value == 'split' }}
+      uses: ./upload
+      with:
+        source: fixture/a.txt
+        name: ${{ env.PREFIX }}-a
+        overwrite: "true"
+
+    - name: Upload B (multi)
+      if: ${{ env.matrix_value == 'merge' || env.matrix_value == 'split' }}
+      uses: ./upload
+      with:
+        source: fixture/b.txt
+        name: ${{ env.PREFIX }}-b
+        overwrite: "true"
+
+    - name: Download (multi)
+      if: ${{ env.matrix_value == 'merge' || env.matrix_value == 'split' }}
+      uses: ./download
+      with:
+        pattern: ${{ env.PREFIX }}-*
+        merge-multiple: ${{ env.matrix_value == 'merge' }}
+        destination: extracted
+
+    - name: Assert (multi)
+      if: ${{ env.matrix_value == 'merge' || env.matrix_value == 'split' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "$matrix_value" = "merge" ]; then
+          # merge-multiple: contents flattened into destination, no per-artifact subdir
+          test -f extracted/fixture/a.txt
+          test -f extracted/fixture/b.txt
+          test ! -d "extracted/${PREFIX}-a"
+          echo "INFO: multi-artifact merge (flat) layout OK"
+        else
+          # split: one <destination>/<artifact-name>/ subdirectory per artifact
+          test -f "extracted/${PREFIX}-a/fixture/a.txt"
+          test -f "extracted/${PREFIX}-b/fixture/b.txt"
+          echo "INFO: multi-artifact split (subdirs) layout OK"
+        fi

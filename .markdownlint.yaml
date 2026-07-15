@@ -1,0 +1,4 @@
+# markdownlint config — https://github.com/DavidAnson/markdownlint
+default: true
+# Line length: input/output tables and reference links legitimately exceed 80 columns.
+MD013: false
