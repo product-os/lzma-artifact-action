@@ -72,6 +72,11 @@ runs:
       run: |
         set -euo pipefail
         echo "INFO: compressing source files with LZMA"
+        # Build the blob in a fresh temp dir. 7z 'a' *adds to* an existing archive, so if this
+        # action runs more than once in a job the hardcoded artifact.tar.7z would otherwise be
+        # reused and the later upload would keep the earlier archive's contents. A temp dir also
+        # keeps the blob out of the workspace (so a later source glob can't pick it up).
+        blob="$(mktemp -d)/artifact.tar.7z"
         # 7-Zip has no long-option form; short switches:
         #   a        add to archive          -si  read tar stream from stdin
         #   -t7z     7z container (LZMA2)     -mx  LZMA level (0-9)
@@ -83,15 +88,16 @@ runs:
           args+=(-mhe=on -p"$PASSWORD")
         fi
         # SOURCE unquoted on purpose so globs/multiple paths expand.
-        tar --create --file=- $SOURCE | 7z "${args[@]}" artifact.tar.7z
+        tar --create --file=- $SOURCE | 7z "${args[@]}" "$blob"
         echo "INFO: local artifact created"
-        ls -l artifact.tar.7z
+        ls -l "$blob"
+        echo "LZMA_BLOB=$blob" >> "$GITHUB_ENV"
 
     - name: Upload local artifact
       id: upload
       uses: actions/upload-artifact@v4
       with:
-        path: artifact.tar.7z
+        path: ${{ env.LZMA_BLOB }}
         name: ${{ inputs.name }}
         if-no-files-found: error
         retention-days: ${{ inputs.retention-days }}
