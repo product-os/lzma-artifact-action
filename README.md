@@ -23,7 +23,7 @@ current upstream versions.
 ### Upload
 
 ```yaml
-- uses: balena-io-experimental/lzma-artifact-action/upload@v1
+- uses: product-os/lzma-artifact-action/upload@v1
   with:
     source: path/to/build/*        # file, directory, or glob (required)
     password: ${{ secrets.ARTIFACT_PASSWORD }}   # optional — omit for compression only
@@ -34,7 +34,7 @@ current upstream versions.
 Compression only (no password):
 
 ```yaml
-- uses: balena-io-experimental/lzma-artifact-action/upload@v1
+- uses: product-os/lzma-artifact-action/upload@v1
   with:
     source: dist/
     name: my-build
@@ -43,7 +43,7 @@ Compression only (no password):
 ### Download
 
 ```yaml
-- uses: balena-io-experimental/lzma-artifact-action/download@v1
+- uses: product-os/lzma-artifact-action/download@v1
   with:
     name: my-build
     password: ${{ secrets.ARTIFACT_PASSWORD }}   # required only if it was encrypted
@@ -53,7 +53,7 @@ Compression only (no password):
 Downloading from another workflow run or repository uses the upstream passthroughs:
 
 ```yaml
-- uses: balena-io-experimental/lzma-artifact-action/download@v1
+- uses: product-os/lzma-artifact-action/download@v1
   with:
     name: my-build
     repository: my-org/other-repo
@@ -132,4 +132,4 @@ Modelled on Alexandros Gidarakos's [`upload-encrypted-artifact`][upstream-upload
 
 ---
 
-Co-authored with Claude
+_Co-authored with Claude_
