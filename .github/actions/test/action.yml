@@ -36,12 +36,14 @@ runs:
           exit 1
         fi
         echo "PREFIX=lzma-selftest-${matrix_value}-${JOB_INDEX}" >> "$GITHUB_ENV"
-        # A literal password for the encrypted scenario only; it guards nothing real here.
-        if [ "$matrix_value" = "encrypted" ]; then
-          echo "PW=correct horse battery staple" >> "$GITHUB_ENV"
-        else
-          echo "PW=" >> "$GITHUB_ENV"
-        fi
+        # A literal password (guards nothing real here). Present for both single-artifact
+        # scenarios so "plain" exercises the real case: password set but encrypt=false must still
+        # produce an unencrypted archive. merge/split leave it empty to also cover the no-password
+        # path. Only the encrypted scenario sets encrypt=true (see the upload steps).
+        case "$matrix_value" in
+          encrypted|plain) echo "PW=correct horse battery staple" >> "$GITHUB_ENV" ;;
+          *) echo "PW=" >> "$GITHUB_ENV" ;;
+        esac
         mkdir -p fixture
         echo single-content > fixture/single.txt
         echo content-a > fixture/a.txt
@@ -53,6 +55,7 @@ runs:
       uses: ./upload
       with:
         source: fixture/single.txt
+        encrypt: ${{ env.matrix_value == 'encrypted' }}
         password: ${{ env.PW }}
         name: ${{ env.PREFIX }}
         overwrite: "true"

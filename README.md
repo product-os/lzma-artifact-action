@@ -26,17 +26,31 @@ current upstream versions.
 - uses: product-os/lzma-artifact-action/upload@v1
   with:
     source: path/to/build/*        # file, directory, or glob (required)
-    password: ${{ secrets.ARTIFACT_PASSWORD }}   # optional — omit for compression only
+    encrypt: true                  # AES-256 encrypt (default: false)
+    password: ${{ secrets.ARTIFACT_PASSWORD }}   # required when encrypt is true
     name: my-build                 # GitHub artifact name (default: artifact)
     compression-level: "3"         # 0-9 (default: 3)
 ```
 
-Compression only (no password):
+Compression only (no encryption):
 
 ```yaml
 - uses: product-os/lzma-artifact-action/upload@v1
   with:
     source: dist/
+    name: my-build
+```
+
+`encrypt` is a plain boolean input, separate from `password`, so encryption can be toggled by a
+workflow expression while the password secret stays permanently set — no need to conditionally
+call the action:
+
+```yaml
+- uses: product-os/lzma-artifact-action/upload@v1
+  with:
+    source: dist/
+    encrypt: ${{ github.ref == 'refs/heads/main' }}   # encrypt only on main
+    password: ${{ secrets.ARTIFACT_PASSWORD }}         # always set; used only when encrypt is true
     name: my-build
 ```
 
@@ -66,14 +80,15 @@ Downloading from another workflow run or repository uses the upstream passthroug
 
 ### `upload`
 
-| Input               | Required | Default    | Description                                                        |
-| ------------------- | -------- | ---------- | ------------------------------------------------------------------ |
-| `source`            | yes      | —          | File, directory, or glob describing what to archive.               |
-| `password`          | no       | `""`       | When set, the archive is AES-256 encrypted (headers included).     |
-| `compression-level` | no       | `3`        | 7-Zip LZMA level, 0 (store) to 9 (best).                           |
-| `name`              | no       | `artifact` | GitHub artifact name (`actions/upload-artifact`).                  |
-| `retention-days`    | no       | `0`        | Artifact retention in days; 0 uses the repo default.               |
-| `overwrite`         | no       | `true`     | Overwrite an existing same-named artifact.                         |
+| Input               | Required | Default    | Description                                                                      |
+| ------------------- | -------- | ---------- | -------------------------------------------------------------------------------- |
+| `source`            | yes      | —          | File, directory, or glob describing what to archive.                             |
+| `encrypt`           | no       | `false`    | AES-256 encrypt the archive (headers included); requires `password`.             |
+| `password`          | no       | `""`       | Key material for encryption. Required when `encrypt` is true; ignored otherwise. |
+| `compression-level` | no       | `3`        | 7-Zip LZMA level, 0 (store) to 9 (best).                                         |
+| `name`              | no       | `artifact` | GitHub artifact name (`actions/upload-artifact`).                                |
+| `retention-days`    | no       | `0`        | Artifact retention in days; 0 uses the repo default.                             |
+| `overwrite`         | no       | `true`     | Overwrite an existing same-named artifact.                                       |
 
 **Outputs:** `artifact-id`, `artifact-url` (from `actions/upload-artifact`).
 
@@ -107,9 +122,11 @@ tar --create --file=- <source> | 7z a -si -t7z -mx=<level> [-mhe=on -p<password>
 7z x -so [-p<password>] artifact.tar.7z | tar --extract --file=- --directory=<destination>
 ```
 
-`7z`'s `-t7z` container uses LZMA2; `-p` adds AES-256 and `-mhe=on` encrypts the archive
-headers/filenames too. Without a password those two switches are dropped and you get identical
-LZMA compression with no encryption.
+`7z`'s `-t7z` container uses LZMA2. When `encrypt` is true, `-p` adds AES-256 and `-mhe=on`
+encrypts the archive headers/filenames too; when it is false those switches are omitted and you
+get identical LZMA compression with no encryption. On download a supplied password is used only
+if the archive is actually encrypted — 7-Zip ignores it on an unencrypted archive — so it is
+safe to always pass the password from a secret.
 
 ## Security
 
