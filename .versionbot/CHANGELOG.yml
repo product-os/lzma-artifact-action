@@ -1,4 +1,17 @@
 - commits:
+    - subject: Pin dependencies
+      hash: 448b9d46dfb404812ea304fc12cd58ec92a65a3a
+      body: |
+        Update actions/download-artifact
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: balena-renovate[bot]
+      nested: []
+  version: 0.0.3
+  title: ""
+  date: 2026-07-17T14:15:32.877Z
+- commits:
     - subject: Update README
       hash: fd5e99299d595b14a533845c6a21bd3b2bda59a6
       body: ""
