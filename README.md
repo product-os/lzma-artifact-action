@@ -128,6 +128,31 @@ get identical LZMA compression with no encryption. On download a supplied passwo
 if the archive is actually encrypted — 7-Zip ignores it on an unencrypted archive — so it is
 safe to always pass the password from a secret.
 
+## Decrypting an artifact manually
+
+The artifact is a single `artifact.tar.7z` (LZMA, optionally AES-256). To recover its contents
+outside a workflow, download it and reverse the pipeline yourself with `7z` and `tar`.
+
+Download it with the GitHub CLI (this unwraps GitHub's outer zip for you):
+
+```bash
+gh run download <run-id> --name <artifact-name>
+```
+
+Or use the run's **Artifacts** section in the web UI, which gives you `<artifact-name>.zip`;
+unzip that to get `artifact.tar.7z`. Then extract:
+
+```bash
+# encrypted (uploaded with encrypt: true)
+7z x -so artifact.tar.7z -p'<password>' | tar --extract --file=-
+
+# not encrypted
+7z x -so artifact.tar.7z | tar --extract --file=-
+```
+
+This extracts into the current directory. Requires `7z` (7-Zip; `7za` or `7zz` work too) and
+`tar`. If you omit `-p` on an encrypted archive, 7-Zip prompts for the password interactively.
+
 ## Security
 
 The password is passed to the actions via environment variables (not interpolated into the
