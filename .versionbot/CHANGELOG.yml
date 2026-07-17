@@ -1,0 +1,14 @@
+- commits:
+    - subject: Update README
+      hash: fd5e99299d595b14a533845c6a21bd3b2bda59a6
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+        Signed-off-by: Kyle Harding <kyle@balena.io>
+        signed-off-by: Kyle Harding <kyle@balena.io>
+      author: Kyle Harding
+      nested: []
+  version: 0.0.2
+  title: ""
+  date: 2026-07-17T13:24:35.424Z
