@@ -10,10 +10,18 @@ inputs:
   source:
     description: A file, directory or wildcard pattern describing what to include in the artifact
     required: true
+  encrypt:
+    description: >
+      Whether to AES-256 encrypt the archive (including its headers/filenames). Set to true to
+      encrypt, which requires a password. This is decoupled from password presence on purpose:
+      a workflow can keep the password secret always set and toggle encryption on or off via
+      this input without having to unset the secret or call the action conditionally.
+    required: false
+    default: "false"
   password:
     description: >
-      Optional text password. When set, an AES-256 key is derived from it and used to encrypt
-      the archive (including its headers/filenames). Leave empty for compression only.
+      Text password from which the AES-256 key is derived. Required when encrypt is true;
+      ignored when encrypt is false.
     required: false
     default: ""
   compression-level:
@@ -67,31 +75,42 @@ runs:
       shell: bash
       env:
         SOURCE: ${{ inputs.source }}
+        ENCRYPT: ${{ inputs.encrypt }}
         PASSWORD: ${{ inputs.password }}
         LEVEL: ${{ inputs.compression-level }}
       run: |
         set -euo pipefail
         echo "INFO: compressing source files with LZMA"
+        # Build the blob in a fresh temp dir. 7z 'a' *adds to* an existing archive, so if this
+        # action runs more than once in a job the hardcoded artifact.tar.7z would otherwise be
+        # reused and the later upload would keep the earlier archive's contents. A temp dir also
+        # keeps the blob out of the workspace (so a later source glob can't pick it up).
+        blob="$(mktemp -d)/artifact.tar.7z"
         # 7-Zip has no long-option form; short switches:
         #   a        add to archive          -si  read tar stream from stdin
         #   -t7z     7z container (LZMA2)     -mx  LZMA level (0-9)
         #   -mhe=on  encrypt headers too      -p   password -> AES-256
         # Only the encryption switches vary, so build them into the arg list once.
         args=(a -si -t7z -mx="$LEVEL")
-        if [ -n "$PASSWORD" ]; then
+        if [ "$ENCRYPT" = "true" ]; then
+          if [ -z "$PASSWORD" ]; then
+            echo "ERROR: encrypt is true but no password was provided" >&2
+            exit 1
+          fi
           echo "INFO: encrypting archive with AES-256"
           args+=(-mhe=on -p"$PASSWORD")
         fi
         # SOURCE unquoted on purpose so globs/multiple paths expand.
-        tar --create --file=- $SOURCE | 7z "${args[@]}" artifact.tar.7z
+        tar --create --file=- $SOURCE | 7z "${args[@]}" "$blob"
         echo "INFO: local artifact created"
-        ls -l artifact.tar.7z
+        ls -l "$blob"
+        echo "LZMA_BLOB=$blob" >> "$GITHUB_ENV"
 
     - name: Upload local artifact
       id: upload
       uses: actions/upload-artifact@v4
       with:
-        path: artifact.tar.7z
+        path: ${{ env.LZMA_BLOB }}
         name: ${{ inputs.name }}
         if-no-files-found: error
         retention-days: ${{ inputs.retention-days }}
