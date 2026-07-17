@@ -10,6 +10,15 @@ inputs:
   source:
     description: A file, directory or wildcard pattern describing what to include in the artifact
     required: true
+  base-directory:
+    description: >
+      Directory to run tar from, so both the source globs and the stored (and therefore
+      extracted) paths are relative to it instead of the GitHub workspace. Use it to strip a
+      leading path prefix from the archive: with base-directory set to build/out and source '.',
+      an item at build/out/image.json is stored as image.json, not build/out/image.json.
+      Empty (default) archives paths as given, relative to the workspace.
+    required: false
+    default: ""
   encrypt:
     description: >
       Whether to AES-256 encrypt the archive (including its headers/filenames). Set to true to
@@ -65,9 +74,12 @@ runs:
       shell: bash
       env:
         SOURCE: ${{ inputs.source }}
+        BASE_DIR: ${{ inputs.base-directory }}
       run: |
         set -euo pipefail
         echo "INFO: checking source files"
+        # cd into base-directory (if given) so globs resolve relative to it, matching the archive step.
+        if [ -n "$BASE_DIR" ]; then cd "$BASE_DIR"; fi
         # Unquoted on purpose so globs/multiple paths expand.
         ls -l $SOURCE
 
@@ -75,6 +87,7 @@ runs:
       shell: bash
       env:
         SOURCE: ${{ inputs.source }}
+        BASE_DIR: ${{ inputs.base-directory }}
         ENCRYPT: ${{ inputs.encrypt }}
         PASSWORD: ${{ inputs.password }}
         LEVEL: ${{ inputs.compression-level }}
@@ -85,6 +98,7 @@ runs:
         # action runs more than once in a job the hardcoded artifact.tar.7z would otherwise be
         # reused and the later upload would keep the earlier archive's contents. A temp dir also
         # keeps the blob out of the workspace (so a later source glob can't pick it up).
+        # mktemp returns an absolute path, so blob stays valid after the base-directory cd below.
         blob="$(mktemp -d)/artifact.tar.7z"
         # 7-Zip has no long-option form; short switches:
         #   a        add to archive          -si  read tar stream from stdin
@@ -100,6 +114,8 @@ runs:
           echo "INFO: encrypting archive with AES-256"
           args+=(-mhe=on -p"$PASSWORD")
         fi
+        # cd into base-directory (if given) so globs expand and tar stores paths relative to it.
+        if [ -n "$BASE_DIR" ]; then cd "$BASE_DIR"; fi
         # SOURCE unquoted on purpose so globs/multiple paths expand.
         tar --create --file=- $SOURCE | 7z "${args[@]}" "$blob"
         echo "INFO: local artifact created"

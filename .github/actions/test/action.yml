@@ -119,3 +119,31 @@ runs:
           test -f "extracted/${PREFIX}-b/fixture/b.txt"
           echo "INFO: multi-artifact split (subdirs) layout OK"
         fi
+
+    # --- base-directory scenario: tar runs from base-directory so the fixture/ prefix is stripped ---
+    - name: Upload (base-dir)
+      if: ${{ env.matrix_value == 'base-dir' }}
+      uses: ./upload
+      with:
+        base-directory: fixture
+        source: single.txt
+        name: ${{ env.PREFIX }}
+        overwrite: "true"
+
+    - name: Download (base-dir)
+      if: ${{ env.matrix_value == 'base-dir' }}
+      uses: ./download
+      with:
+        name: ${{ env.PREFIX }}
+        destination: extracted
+
+    - name: Assert (base-dir)
+      if: ${{ env.matrix_value == 'base-dir' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # base-directory strips the fixture/ prefix: the file lands flat, not under fixture/.
+        test -f extracted/single.txt
+        test ! -e extracted/fixture/single.txt
+        grep -qx single-content extracted/single.txt
+        echo "INFO: base-directory prefix-strip round-trip OK"
