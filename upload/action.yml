@@ -19,6 +19,14 @@ inputs:
       Empty (default) archives paths as given, relative to the workspace.
     required: false
     default: ""
+  if-no-files-found:
+    description: >
+      What to do when source matches no existing files: error (fail, the default), warn (log a
+      warning and upload nothing), or ignore (silently upload nothing). Individual globs or
+      literal paths that match nothing are always tolerated — this only governs the case where
+      the whole set is empty, matching actions/upload-artifact.
+    required: false
+    default: error
   encrypt:
     description: >
       Whether to AES-256 encrypt the archive (including its headers/filenames). Set to true to
@@ -70,35 +78,43 @@ runs:
   using: composite
 
   steps:
-    - name: Check source files
-      shell: bash
-      env:
-        SOURCE: ${{ inputs.source }}
-        BASE_DIR: ${{ inputs.base-directory }}
-      run: |
-        set -euo pipefail
-        echo "INFO: checking source files"
-        # cd into base-directory (if given) so globs resolve relative to it, matching the archive step.
-        if [ -n "$BASE_DIR" ]; then cd "$BASE_DIR"; fi
-        # Unquoted on purpose so globs/multiple paths expand.
-        ls -l $SOURCE
-
     - name: Create local artifact
+      id: create
       shell: bash
       env:
         SOURCE: ${{ inputs.source }}
         BASE_DIR: ${{ inputs.base-directory }}
+        IF_NONE: ${{ inputs.if-no-files-found }}
         ENCRYPT: ${{ inputs.encrypt }}
         PASSWORD: ${{ inputs.password }}
         LEVEL: ${{ inputs.compression-level }}
       run: |
         set -euo pipefail
-        echo "INFO: compressing source files with LZMA"
+        # cd into base-directory (if given) so globs expand and tar stores paths relative to it.
+        if [ -n "$BASE_DIR" ]; then cd "$BASE_DIR"; fi
+        # Collect the existing files from source, tolerating globs that match nothing and literal
+        # paths that are absent (upload-artifact semantics: individual misses are fine). SOURCE is
+        # unquoted on purpose so whitespace/newline-separated globs expand.
+        files=()
+        for entry in $SOURCE; do
+          for f in $entry; do
+            [ -e "$f" ] && files+=("$f")
+          done
+        done
+        if [ "${#files[@]}" -eq 0 ]; then
+          case "$IF_NONE" in
+            ignore) echo "INFO: no files matched '${SOURCE}'; skipping upload"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            warn)   echo "::warning::no files matched '${SOURCE}'; skipping upload"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            *)      echo "::error::no files matched '${SOURCE}'"; exit 1 ;;
+          esac
+        fi
+        echo "INFO: archiving ${#files[@]} path(s) with LZMA:"
+        printf '  %s\n' "${files[@]}"
         # Build the blob in a fresh temp dir. 7z 'a' *adds to* an existing archive, so if this
         # action runs more than once in a job the hardcoded artifact.tar.7z would otherwise be
         # reused and the later upload would keep the earlier archive's contents. A temp dir also
         # keeps the blob out of the workspace (so a later source glob can't pick it up).
-        # mktemp returns an absolute path, so blob stays valid after the base-directory cd below.
+        # mktemp returns an absolute path, so it is unaffected by the base-directory cd above.
         blob="$(mktemp -d)/artifact.tar.7z"
         # 7-Zip has no long-option form; short switches:
         #   a        add to archive          -si  read tar stream from stdin
@@ -108,22 +124,20 @@ runs:
         args=(a -si -t7z -mx="$LEVEL")
         if [ "$ENCRYPT" = "true" ]; then
           if [ -z "$PASSWORD" ]; then
-            echo "ERROR: encrypt is true but no password was provided" >&2
+            echo "::error::encrypt is true but no password was provided"
             exit 1
           fi
           echo "INFO: encrypting archive with AES-256"
           args+=(-mhe=on -p"$PASSWORD")
         fi
-        # cd into base-directory (if given) so globs expand and tar stores paths relative to it.
-        if [ -n "$BASE_DIR" ]; then cd "$BASE_DIR"; fi
-        # SOURCE unquoted on purpose so globs/multiple paths expand.
-        tar --create --file=- $SOURCE | 7z "${args[@]}" "$blob"
+        tar --create --file=- "${files[@]}" | 7z "${args[@]}" "$blob"
         echo "INFO: local artifact created"
         ls -l "$blob"
         echo "LZMA_BLOB=$blob" >> "$GITHUB_ENV"
 
     - name: Upload local artifact
       id: upload
+      if: steps.create.outputs.skip != 'true'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         path: ${{ env.LZMA_BLOB }}

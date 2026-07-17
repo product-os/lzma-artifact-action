@@ -26,11 +26,11 @@ jobs:
     with:
       # Runs .github/actions/test once per value x os cell. encrypted/plain exercise the
       # AES-256 and compression-only paths; merge/split exercise the multi-artifact
-      # extraction layouts; base-dir exercises the base-directory prefix strip. Linux only:
-      # 7z is guaranteed on ubuntu runners but not on macOS (self-hosted Linux runners must
-      # have 7z / p7zip-full installed).
+      # extraction layouts; base-dir exercises the base-directory prefix strip; missing exercises
+      # the if-no-files-found tolerance of absent paths. Linux only: 7z is guaranteed on ubuntu
+      # runners but not on macOS (self-hosted Linux runners must have 7z / p7zip-full installed).
       custom_test_matrix: >
         {
-          "value": ["encrypted", "plain", "merge", "split", "base-dir"],
+          "value": ["encrypted", "plain", "merge", "split", "base-dir", "missing"],
           "os": ["ubuntu-latest", ["self-hosted", "Linux"]]
         }

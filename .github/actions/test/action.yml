@@ -147,3 +147,35 @@ runs:
         test ! -e extracted/fixture/single.txt
         grep -qx single-content extracted/single.txt
         echo "INFO: base-directory prefix-strip round-trip OK"
+
+    # --- missing scenario: individual absent paths/globs are tolerated; only existing files are archived ---
+    - name: Upload (missing)
+      if: ${{ env.matrix_value == 'missing' }}
+      uses: ./upload
+      with:
+        # A real file, an absent literal, and a non-matching glob — only the real file should be archived.
+        source: |
+          fixture/single.txt
+          fixture/does-not-exist.txt
+          fixture/*.nomatch
+        name: ${{ env.PREFIX }}
+        overwrite: "true"
+
+    - name: Download (missing)
+      if: ${{ env.matrix_value == 'missing' }}
+      uses: ./download
+      with:
+        name: ${{ env.PREFIX }}
+        destination: extracted
+
+    - name: Assert (missing)
+      if: ${{ env.matrix_value == 'missing' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The present file is archived; the absent literal and non-matching glob are silently dropped.
+        test -f extracted/fixture/single.txt
+        test ! -e extracted/fixture/does-not-exist.txt
+        # Exactly one regular file made it into the archive.
+        test "$(find extracted -type f | wc -l)" -eq 1
+        echo "INFO: missing-path tolerance OK"
