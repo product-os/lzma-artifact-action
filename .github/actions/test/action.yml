@@ -48,6 +48,7 @@ runs:
         echo single-content > fixture/single.txt
         echo content-a > fixture/a.txt
         echo content-b > fixture/b.txt
+        ln -s single.txt fixture/link.txt
 
     # --- single-artifact scenarios: encrypted, plain ---
     - name: Upload (single)
@@ -179,3 +180,30 @@ runs:
         # Exactly one regular file made it into the archive.
         test "$(find extracted -type f | wc -l)" -eq 1
         echo "INFO: missing-path tolerance OK"
+
+    # --- symlink scenario: follow-symlinks (default) archives the target as a real file ---
+    - name: Upload (symlink)
+      if: ${{ env.matrix_value == 'symlink' }}
+      uses: ./upload
+      with:
+        source: fixture/link.txt
+        name: ${{ env.PREFIX }}
+        overwrite: "true"
+
+    - name: Download (symlink)
+      if: ${{ env.matrix_value == 'symlink' }}
+      uses: ./download
+      with:
+        name: ${{ env.PREFIX }}
+        destination: extracted
+
+    - name: Assert (symlink)
+      if: ${{ env.matrix_value == 'symlink' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # With follow-symlinks default (true), link.txt is stored as a real file, not a symlink.
+        test -f extracted/fixture/link.txt
+        test ! -L extracted/fixture/link.txt
+        grep -qx single-content extracted/fixture/link.txt
+        echo "INFO: follow-symlinks dereference OK"

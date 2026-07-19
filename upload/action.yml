@@ -27,6 +27,14 @@ inputs:
       the whole set is empty, matching actions/upload-artifact.
     required: false
     default: error
+  follow-symlinks:
+    description: >
+      Whether to archive the target of a symlink rather than the symlink itself (tar
+      --dereference). Default true, matching actions/upload-artifact's follow-symbolic-links, so
+      symlinked sources (e.g. yocto deploy-dir manifests/images) are stored as real files. Set to
+      false to preserve symlinks as-is.
+    required: false
+    default: "true"
   encrypt:
     description: >
       Whether to AES-256 encrypt the archive (including its headers/filenames). Set to true to
@@ -85,6 +93,7 @@ runs:
         SOURCE: ${{ inputs.source }}
         BASE_DIR: ${{ inputs.base-directory }}
         IF_NONE: ${{ inputs.if-no-files-found }}
+        FOLLOW_SYMLINKS: ${{ inputs.follow-symlinks }}
         ENCRYPT: ${{ inputs.encrypt }}
         PASSWORD: ${{ inputs.password }}
         LEVEL: ${{ inputs.compression-level }}
@@ -130,7 +139,10 @@ runs:
           echo "INFO: encrypting archive with AES-256"
           args+=(-mhe=on -p"$PASSWORD")
         fi
-        tar --create --file=- "${files[@]}" | 7z "${args[@]}" "$blob"
+        # --dereference archives the target of a symlink rather than the link itself.
+        tar_args=(--create --file=-)
+        if [ "$FOLLOW_SYMLINKS" = "true" ]; then tar_args+=(--dereference); fi
+        tar "${tar_args[@]}" "${files[@]}" | 7z "${args[@]}" "$blob"
         echo "INFO: local artifact created"
         ls -l "$blob"
         echo "LZMA_BLOB=$blob" >> "$GITHUB_ENV"
