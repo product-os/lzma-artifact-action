@@ -54,6 +54,18 @@ call the action:
     name: my-build
 ```
 
+Strip a leading path prefix with `base-directory` — `tar` runs from it, so the stored (and
+therefore extracted) paths are relative to it. Here `build/out/image.json` is archived as
+`image.json`, not `build/out/image.json`:
+
+```yaml
+- uses: product-os/lzma-artifact-action/upload@v1
+  with:
+    base-directory: build/out
+    source: "*"                    # globs resolve inside base-directory
+    name: my-build
+```
+
 ### Download
 
 ```yaml
@@ -83,6 +95,9 @@ Downloading from another workflow run or repository uses the upstream passthroug
 | Input               | Required | Default    | Description                                                                      |
 | ------------------- | -------- | ---------- | -------------------------------------------------------------------------------- |
 | `source`            | yes      | —          | File, directory, or glob describing what to archive.                             |
+| `base-directory`    | no       | `""`       | Run `tar` from this directory so `source` globs and stored/extracted paths are relative to it (strips a leading prefix). Empty archives paths relative to the workspace. |
+| `if-no-files-found` | no       | `error`    | When `source` matches nothing: `error`, `warn` (upload nothing), or `ignore`. Individual misses are always tolerated; governs only the all-empty case (like `upload-artifact`). |
+| `follow-symlinks`   | no       | `true`     | Archive the target of a symlink instead of the link (`tar --dereference`), matching `upload-artifact`'s `follow-symbolic-links`. Set `false` to keep symlinks as-is. |
 | `encrypt`           | no       | `false`    | AES-256 encrypt the archive (headers included); requires `password`.             |
 | `password`          | no       | `""`       | Key material for encryption. Required when `encrypt` is true; ignored otherwise. |
 | `compression-level` | no       | `3`        | 7-Zip LZMA level, 0 (store) to 9 (best).                                         |

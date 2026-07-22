@@ -48,6 +48,7 @@ runs:
         echo single-content > fixture/single.txt
         echo content-a > fixture/a.txt
         echo content-b > fixture/b.txt
+        ln -s single.txt fixture/link.txt
 
     # --- single-artifact scenarios: encrypted, plain ---
     - name: Upload (single)
@@ -119,3 +120,90 @@ runs:
           test -f "extracted/${PREFIX}-b/fixture/b.txt"
           echo "INFO: multi-artifact split (subdirs) layout OK"
         fi
+
+    # --- base-directory scenario: tar runs from base-directory so the fixture/ prefix is stripped ---
+    - name: Upload (base-dir)
+      if: ${{ env.matrix_value == 'base-dir' }}
+      uses: ./upload
+      with:
+        base-directory: fixture
+        source: single.txt
+        name: ${{ env.PREFIX }}
+        overwrite: "true"
+
+    - name: Download (base-dir)
+      if: ${{ env.matrix_value == 'base-dir' }}
+      uses: ./download
+      with:
+        name: ${{ env.PREFIX }}
+        destination: extracted
+
+    - name: Assert (base-dir)
+      if: ${{ env.matrix_value == 'base-dir' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # base-directory strips the fixture/ prefix: the file lands flat, not under fixture/.
+        test -f extracted/single.txt
+        test ! -e extracted/fixture/single.txt
+        grep -qx single-content extracted/single.txt
+        echo "INFO: base-directory prefix-strip round-trip OK"
+
+    # --- missing scenario: individual absent paths/globs are tolerated; only existing files are archived ---
+    - name: Upload (missing)
+      if: ${{ env.matrix_value == 'missing' }}
+      uses: ./upload
+      with:
+        # A real file, an absent literal, and a non-matching glob — only the real file should be archived.
+        source: |
+          fixture/single.txt
+          fixture/does-not-exist.txt
+          fixture/*.nomatch
+        name: ${{ env.PREFIX }}
+        overwrite: "true"
+
+    - name: Download (missing)
+      if: ${{ env.matrix_value == 'missing' }}
+      uses: ./download
+      with:
+        name: ${{ env.PREFIX }}
+        destination: extracted
+
+    - name: Assert (missing)
+      if: ${{ env.matrix_value == 'missing' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The present file is archived; the absent literal and non-matching glob are silently dropped.
+        test -f extracted/fixture/single.txt
+        test ! -e extracted/fixture/does-not-exist.txt
+        # Exactly one regular file made it into the archive.
+        test "$(find extracted -type f | wc -l)" -eq 1
+        echo "INFO: missing-path tolerance OK"
+
+    # --- symlink scenario: follow-symlinks (default) archives the target as a real file ---
+    - name: Upload (symlink)
+      if: ${{ env.matrix_value == 'symlink' }}
+      uses: ./upload
+      with:
+        source: fixture/link.txt
+        name: ${{ env.PREFIX }}
+        overwrite: "true"
+
+    - name: Download (symlink)
+      if: ${{ env.matrix_value == 'symlink' }}
+      uses: ./download
+      with:
+        name: ${{ env.PREFIX }}
+        destination: extracted
+
+    - name: Assert (symlink)
+      if: ${{ env.matrix_value == 'symlink' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # With follow-symlinks default (true), link.txt is stored as a real file, not a symlink.
+        test -f extracted/fixture/link.txt
+        test ! -L extracted/fixture/link.txt
+        grep -qx single-content extracted/fixture/link.txt
+        echo "INFO: follow-symlinks dereference OK"
