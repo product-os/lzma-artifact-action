@@ -1,4 +1,95 @@
 - commits:
+    - subject: "upload: Follow symlinks by default (tar --dereference)"
+      hash: 1480a658b1d24baa9984474883de3af6b81365aa
+      body: >
+        tar archived symlinks as-is, so a symlinked source (e.g. a yocto
+        deploy-dir
+
+        manifest or image) became a dangling link on extract. Add a
+        follow-symlinks
+
+        input (default true, matching actions/upload-artifact's
+        follow-symbolic-links)
+
+        that adds tar --dereference so the link target is stored as a real file.
+
+
+        Adds a `symlink` self-test scenario.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Signed-off-by: Kyle Harding <kyle@balena.io>
+        signed-off-by: Kyle Harding <kyle@balena.io>
+      author: Kyle Harding
+      nested: []
+    - subject: "upload: Tolerate missing sources via if-no-files-found"
+      hash: f7018b7445a4a7ce495bf6643abc90e3d6ded5d3
+      body: >
+        Any missing path or non-matching glob in source previously failed the
+        upload
+
+        (both the ls check and tar error under set -e). Collect only the
+        existing
+
+        files, and add an if-no-files-found input (error | warn | ignore) that —
+        like
+
+        actions/upload-artifact — governs just the case where nothing matches at
+        all;
+
+        individual misses are always tolerated. This lets a caller pass a glob
+        list of
+
+        optional build outputs without pre-filtering which ones exist.
+
+
+        Adds a `missing` self-test scenario to the flowzone matrix.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Signed-off-by: Kyle Harding <kyle@balena.io>
+        signed-off-by: Kyle Harding <kyle@balena.io>
+      author: Kyle Harding
+      nested: []
+    - subject: "upload: Add base-directory input to strip a leading path prefix"
+      hash: 72b8df3b5ab6c15f5b701435d805c2db2a9a33c1
+      body: >
+        The upload action tars source paths as-given (relative to the
+        workspace), so
+
+        the archive — and the extracted layout — carries whatever prefix the
+        source
+
+        paths have. base-directory runs tar from that directory instead, so both
+        the
+
+        source globs and the stored paths are relative to it. This lets a caller
+        strip
+
+        a leading prefix (e.g. build/out/image.json -> image.json) without a
+        separate
+
+        staging copy, which keeps release-asset keys flat for consumers that key
+        on the
+
+        archive-relative path.
+
+
+        Empty (default) preserves the previous behaviour. Adds a base-dir
+        self-test
+
+        scenario to the flowzone matrix.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Signed-off-by: Kyle Harding <kyle@balena.io>
+        signed-off-by: Kyle Harding <kyle@balena.io>
+      author: Kyle Harding
+      nested: []
+  version: 0.1.0
+  title: ""
+  date: 2026-07-22T10:07:04.742Z
+- commits:
     - subject: Pin dependencies
       hash: 448b9d46dfb404812ea304fc12cd58ec92a65a3a
       body: |
