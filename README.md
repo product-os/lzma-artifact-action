@@ -25,7 +25,7 @@ current upstream versions.
 ```yaml
 - uses: product-os/lzma-artifact-action/upload@v1
   with:
-    source: path/to/build/*        # file, directory, or glob (required)
+    source: path/to/build/**       # files, directories, or globs (required)
     encrypt: true                  # AES-256 encrypt (default: false)
     password: ${{ secrets.ARTIFACT_PASSWORD }}   # required when encrypt is true
     name: my-build                 # GitHub artifact name (default: artifact)
@@ -66,6 +66,35 @@ therefore extracted) paths are relative to it. Here `build/out/image.json` is ar
     name: my-build
 ```
 
+#### Source patterns
+
+`source` takes a whitespace- or newline-separated list of files, directories and glob patterns.
+`globstar` is enabled, so `**` spans any number of directory levels:
+
+```yaml
+- uses: product-os/lzma-artifact-action/upload@v1
+  with:
+    source: |
+      licenses/**
+      cyclonedx-export/**/*.json
+      build/tmp/deploy/images/*/*.img
+    name: my-build
+```
+
+Individual patterns that match nothing are tolerated; `if-no-files-found` governs only the case
+where the whole list matches nothing.
+
+Two behaviours to be aware of:
+
+- **A matched directory brings its whole tree.** `tar` recurses, so when a pattern matches a
+  directory every file below it is archived, whether or not the pattern would have matched those
+  files. `licenses/**` and `licenses` produce the same archive. This differs from
+  `actions/upload-artifact`, which uploads only the files a pattern matched. Nested matches are
+  pruned before `tar` runs, so a file is never stored twice.
+- **Dot-prefixed names are skipped.** Bash globs do not match names beginning with `.`, so no
+  pattern reaches `.hidden/x.json`. Name such a path literally, or point `source` at a directory
+  that contains it.
+
 ### Download
 
 ```yaml
@@ -94,7 +123,7 @@ Downloading from another workflow run or repository uses the upstream passthroug
 
 | Input               | Required | Default    | Description                                                                      |
 | ------------------- | -------- | ---------- | -------------------------------------------------------------------------------- |
-| `source`            | yes      | —          | File, directory, or glob describing what to archive.                             |
+| `source`            | yes      | —          | Files, directories or globs to archive; `**` spans any depth (see above).        |
 | `base-directory`    | no       | `""`       | Run `tar` from this directory so `source` globs and stored/extracted paths are relative to it (strips a leading prefix). Empty archives paths relative to the workspace. |
 | `if-no-files-found` | no       | `error`    | When `source` matches nothing: `error`, `warn` (upload nothing), or `ignore`. Individual misses are always tolerated; governs only the all-empty case (like `upload-artifact`). |
 | `follow-symlinks`   | no       | `true`     | Archive the target of a symlink instead of the link (`tar --dereference`), matching `upload-artifact`'s `follow-symbolic-links`. Set `false` to keep symlinks as-is. |
@@ -131,11 +160,17 @@ Downloading from another workflow run or repository uses the upstream passthroug
 
 ```text
 # upload
-tar --create --file=- <source> | 7z a -si -t7z -mx=<level> [-mhe=on -p<password>] artifact.tar.7z
+printf '%s\0' <pruned source paths> \
+  | tar --create --file=- --null --files-from=- \
+  | 7z a -si -t7z -mx=<level> [-mhe=on -p<password>] artifact.tar.7z
 
 # download
 7z x -so [-p<password>] artifact.tar.7z | tar --extract --file=- --directory=<destination>
 ```
+
+The path list reaches `tar` on stdin rather than as arguments, because a `**` expansion over a
+large tree exceeds `ARG_MAX`. Paths that already have an ancestor in the list are dropped first, so
+`tar`'s own recursion cannot store the same file once per ancestor directory.
 
 `7z`'s `-t7z` container uses LZMA2. When `encrypt` is true, `-p` adds AES-256 and `-mhe=on`
 encrypts the archive headers/filenames too; when it is false those switches are omitted and you

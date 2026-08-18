@@ -3,7 +3,11 @@
 # once per custom_test_matrix cell, exporting `matrix_value` to the environment.
 # Scenarios (matrix value): encrypted/plain exercise encryption on/off on a single artifact;
 # merge/split exercise the multi-artifact extraction layouts (flat vs per-name subdirs);
-# dangling exercises tolerance of a tar warning (exit 1) during archive creation.
+# base-dir exercises the base-directory prefix strip; missing exercises the if-no-files-found
+# tolerance of absent paths; symlink exercises follow-symlinks;
+# dangling exercises tolerance of a tar warning (exit 1) during archive creation;
+# globstar exercises ** spanning more than one directory level.
+# Adding a scenario means adding a value to custom_test_matrix in .github/workflows/flowzone.yml.
 name: Self-test LZMA artifact actions
 description: Upload then download fixtures and assert contents and layout survive the round-trip
 
@@ -58,6 +62,11 @@ runs:
         mkdir -p fixture/tree
         echo tree-content > fixture/tree/real.txt
         ln -s /nonexistent/target fixture/tree/dangling
+        # A tree deeper than one level, for the globstar scenario. Without `shopt -s globstar`
+        # bash expands ** as a plain *, so fixture/deep/**/*.json would reach shallow.json only.
+        mkdir -p fixture/deep/a/b/c
+        echo shallow-content > fixture/deep/shallow.json
+        echo deep-content > fixture/deep/a/b/c/leaf.json
 
     # --- single-artifact scenarios: encrypted, plain ---
     - name: Upload (single)
@@ -247,3 +256,33 @@ runs:
         test ! -e extracted/fixture/tree/dangling
         test ! -L extracted/fixture/tree/dangling
         echo "INFO: tar warning tolerance OK"
+
+    # --- globstar scenario: ** must span every directory level, not just the first ---
+    - name: Upload (globstar)
+      if: ${{ env.matrix_value == 'globstar' }}
+      uses: ./upload
+      with:
+        source: fixture/deep/**/*.json
+        name: ${{ env.PREFIX }}
+        overwrite: "true"
+
+    - name: Download (globstar)
+      if: ${{ env.matrix_value == 'globstar' }}
+      uses: ./download
+      with:
+        name: ${{ env.PREFIX }}
+        destination: extracted
+
+    - name: Assert (globstar)
+      if: ${{ env.matrix_value == 'globstar' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # ** matches zero directories as well as many, so both depths must arrive. The deep file is
+        # the regression check: it is the one that goes missing when globstar is off.
+        test -f extracted/fixture/deep/shallow.json
+        test -f extracted/fixture/deep/a/b/c/leaf.json
+        grep -qx deep-content extracted/fixture/deep/a/b/c/leaf.json
+        # Only the two .json files, so the pattern did not pull in the whole tree.
+        test "$(find extracted -type f | wc -l)" -eq 2
+        echo "INFO: globstar ** depth traversal OK"
