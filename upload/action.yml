@@ -142,7 +142,29 @@ runs:
         # --dereference archives the target of a symlink rather than the link itself.
         tar_args=(--create --file=-)
         if [ "$FOLLOW_SYMLINKS" = "true" ]; then tar_args+=(--dereference); fi
+        # tar's exit status is tri-state: 0 clean, 1 warnings, 2 fatal. A dangling symlink that tar
+        # reaches while it walks a directory reports "File removed before we read it" and exits 1,
+        # even though the archive it wrote is complete. pipefail cannot tell 1 from 2, and neither
+        # --warning=no-file-removed nor --ignore-failed-read clears the status (they only silence
+        # the message), so judge each side of the pipe from PIPESTATUS instead. Do not replace the
+        # `set +e` with `|| true`: that overwrites PIPESTATUS with the status of `true`, which
+        # leaves element [1] unbound under `set -u`.
+        set +e
         tar "${tar_args[@]}" "${files[@]}" | 7z "${args[@]}" "$blob"
+        pipe_status=("${PIPESTATUS[@]}")
+        set -e
+        if [ "${pipe_status[1]}" -ne 0 ]; then
+          echo "::error::7z failed (exit ${pipe_status[1]})"
+          exit 1
+        fi
+        if [ "${pipe_status[0]}" -gt 1 ]; then
+          echo "::error::tar failed (exit ${pipe_status[0]})"
+          exit 1
+        elif [ "${pipe_status[0]}" -eq 1 ]; then
+          # Exit 1 also covers "file changed as we read it", where that member's stored copy can be
+          # torn. The archive is valid either way; tar names the affected paths on stderr above.
+          echo "::warning::tar reported warnings (exit 1); the archive is complete, see the tar output above"
+        fi
         echo "INFO: local artifact created"
         ls -l "$blob"
         echo "LZMA_BLOB=$blob" >> "$GITHUB_ENV"
