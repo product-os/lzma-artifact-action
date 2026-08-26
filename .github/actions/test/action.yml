@@ -2,7 +2,8 @@
 # Flowzone discovers this action by directory existence (.github/actions/test) and runs it
 # once per custom_test_matrix cell, exporting `matrix_value` to the environment.
 # Scenarios (matrix value): encrypted/plain exercise encryption on/off on a single artifact;
-# merge/split exercise the multi-artifact extraction layouts (flat vs per-name subdirs).
+# merge/split exercise the multi-artifact extraction layouts (flat vs per-name subdirs);
+# dangling exercises tolerance of a tar warning (exit 1) during archive creation.
 name: Self-test LZMA artifact actions
 description: Upload then download fixtures and assert contents and layout survive the round-trip
 
@@ -49,6 +50,14 @@ runs:
         echo content-a > fixture/a.txt
         echo content-b > fixture/b.txt
         ln -s single.txt fixture/link.txt
+        # A dangling symlink *inside a directory*, for the dangling scenario. tar reaches it by
+        # walking fixture/tree rather than from its command line, so with --dereference it reports
+        # "File removed before we read it" and exits 1 while still writing a complete archive. A
+        # dangling symlink named directly in source cannot reproduce this: the upload action's
+        # collection loop drops it, because `test -e` follows the link.
+        mkdir -p fixture/tree
+        echo tree-content > fixture/tree/real.txt
+        ln -s /nonexistent/target fixture/tree/dangling
 
     # --- single-artifact scenarios: encrypted, plain ---
     - name: Upload (single)
@@ -207,3 +216,34 @@ runs:
         test ! -L extracted/fixture/link.txt
         grep -qx single-content extracted/fixture/link.txt
         echo "INFO: follow-symlinks dereference OK"
+
+    # --- dangling scenario: tar warns (exit 1) on a member it cannot stat; upload must succeed ---
+    - name: Upload (dangling)
+      if: ${{ env.matrix_value == 'dangling' }}
+      uses: ./upload
+      with:
+        source: fixture/tree
+        name: ${{ env.PREFIX }}
+        overwrite: "true"
+
+    - name: Download (dangling)
+      if: ${{ env.matrix_value == 'dangling' }}
+      uses: ./download
+      with:
+        name: ${{ env.PREFIX }}
+        destination: extracted
+
+    - name: Assert (dangling)
+      if: ${{ env.matrix_value == 'dangling' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Reaching this step is the regression check: tar exited 1 on the dangling symlink and the
+        # upload step still succeeded. The readable file must survive the round-trip.
+        test -f extracted/fixture/tree/real.txt
+        grep -qx tree-content extracted/fixture/tree/real.txt
+        # The dangling link is absent, because --dereference could not stat its target. Check -L as
+        # well as -e: -e is false for a dangling symlink even when the link itself is present.
+        test ! -e extracted/fixture/tree/dangling
+        test ! -L extracted/fixture/tree/dangling
+        echo "INFO: tar warning tolerance OK"
