@@ -1,4 +1,58 @@
 - commits:
+    - subject: "upload: Don't fail the build on a tar warning"
+      hash: a2d13b0550d35e479a6bf367105ae16b4d948a2f
+      body: >
+        tar exits 1 for warnings and 2 for fatal errors, but the tar | 7z
+        pipeline ran
+
+        under pipefail, which can't tell the two apart. A dangling symlink in a
+        source
+
+        directory made tar print "File removed before we read it" and exit 1, so
+        the
+
+        step failed even though 7z had already written a complete archive.
+        Neither
+
+        --warning=no-file-removed nor --ignore-failed-read helps, they only
+        silence the
+
+        message and leave the status at 1.
+
+
+        Read PIPESTATUS instead so each side of the pipe is judged on its own.
+        Any 7z
+
+        failure is fatal, tar 2 is fatal, tar 1 logs a warning and carries on.
+        Using
+
+        || true here would not work, it resets PIPESTATUS to the exit of true
+        and the
+
+        7z element ends up unbound under set -u.
+
+
+        Only follow-symlinks (--dereference) exposes this, and only for symlinks
+        tar
+
+        finds by walking a directory. One named directly in source never reaches
+        tar,
+
+        since the collection loop drops it with test -e.
+
+
+        Adds a `dangling` self-test scenario.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Signed-off-by: Kyle Harding <kyle@balena.io>
+        signed-off-by: Kyle Harding <kyle@balena.io>
+      author: Kyle Harding
+      nested: []
+  version: 0.1.1
+  title: ""
+  date: 2026-08-26T09:21:58.386Z
+- commits:
     - subject: "upload: Follow symlinks by default (tar --dereference)"
       hash: 1480a658b1d24baa9984474883de3af6b81365aa
       body: >
