@@ -1,4 +1,17 @@
 - commits:
+    - subject: Update actions/download-artifact action to v8
+      hash: 63e244503c07cb9cb719bafec965db8184c68ce4
+      body: |
+        Update actions/download-artifact from 6.0.0 to 8.0.1
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: balena-renovate[bot]
+      nested: []
+  version: 0.1.4
+  title: ""
+  date: 2026-08-26T19:16:06.081Z
+- commits:
     - subject: Update dependency flowzonify to v0.4.0
       hash: f194d31a57136b167446787e3e5e6c0abc3c497d
       body: |
