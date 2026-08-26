@@ -1,4 +1,17 @@
 - commits:
+    - subject: Update GitHub Artifact Actions to v6
+      hash: dc0f23b2f147414431d44eac99c13f9966fbf1a5
+      body: |
+        Update actions/download-artifact from 4.3.0 to 6.0.0
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: balena-renovate[bot]
+      nested: []
+  version: 0.1.2
+  title: ""
+  date: 2026-08-26T17:42:00.300Z
+- commits:
     - subject: "upload: Don't fail the build on a tar warning"
       hash: a2d13b0550d35e479a6bf367105ae16b4d948a2f
       body: >
