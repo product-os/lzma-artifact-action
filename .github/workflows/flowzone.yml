@@ -24,15 +24,12 @@ jobs:
       )
     secrets: inherit
     with:
-      # Runs .github/actions/test once per value x os cell. encrypted/plain exercise the
-      # AES-256 and compression-only paths; merge/split exercise the multi-artifact
-      # extraction layouts; base-dir exercises the base-directory prefix strip; missing exercises
-      # the if-no-files-found tolerance of absent paths; symlink exercises follow-symlinks;
-      # dangling exercises tolerance of a tar warning (exit 1) mid-archive. Linux
-      # only: 7z is guaranteed on ubuntu runners but not on macOS (self-hosted Linux runners must
-      # have 7z / p7zip-full installed).
+      # Runs .github/actions/test once per value x os cell. That action's header comment says what
+      # each scenario exercises; keep the roster there, next to the steps it describes. Linux only:
+      # 7z is guaranteed on ubuntu runners but not on macOS (self-hosted Linux runners must have
+      # 7z / p7zip-full installed).
       custom_test_matrix: >
         {
-          "value": ["encrypted", "plain", "merge", "split", "base-dir", "missing", "symlink", "dangling"],
+          "value": ["encrypted", "plain", "merge", "split", "base-dir", "missing", "symlink", "dangling", "globstar"],
           "os": ["ubuntu-latest", ["self-hosted", "Linux"]]
         }
