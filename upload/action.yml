@@ -172,7 +172,7 @@ runs:
     - name: Upload local artifact
       id: upload
       if: steps.create.outputs.skip != 'true'
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         path: ${{ env.LZMA_BLOB }}
         name: ${{ inputs.name }}
