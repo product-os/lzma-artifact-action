@@ -1,4 +1,17 @@
 - commits:
+    - subject: Update actions/download-artifact digest to 9000827
+      hash: cf6fecd80fbaf6f53228c0b9d950e5aa17ab75ff
+      body: |
+        Update actions/download-artifact
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: balena-renovate[bot]
+      nested: []
+  version: 0.1.5
+  title: ""
+  date: 2026-10-07T10:50:20.991Z
+- commits:
     - subject: Update actions/download-artifact action to v8
       hash: 63e244503c07cb9cb719bafec965db8184c68ce4
       body: |
